@@ -1,0 +1,7 @@
+column,required,type,constraint
+team_id,yes,string,Nonempty fictional or anonymized team identifier
+item_id,yes,string,Q01 through Q12
+mean_score,yes,number,Finite 1 through 5 inclusive
+respondent_count,yes,integer,Positive integer
+percentile_rank,no,number,Finite 0 through 100 inclusive if supplied
+period,no,string,Nonempty period label if supplied

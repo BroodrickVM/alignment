@@ -1,0 +1,5 @@
+# Python 3.9+. Tool 1 and the Tool 2 analyzer use the standard library only.
+# Local Tool 2 dashboard:
+streamlit>=1.40,<2.0
+# Test dependency:
+pytest>=8.0,<9.0

@@ -1,0 +1,23 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.env
+.DS_Store
+*.pyc
+tool2_output.txt
+
+# Generated presentation files
+presentation/.dependencies/
+presentation/~$*.pptx
+
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# Generated presentation dependencies
+presentation/.dependencies/
+
+# Temporary PowerPoint files
+presentation/~$*.pptx
+
+# Streamlit secrets
+.streamlit/secrets.toml
