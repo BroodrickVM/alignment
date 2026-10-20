@@ -36,24 +36,32 @@ def test_dashboard_renders_and_team_selector_updates_all_outputs():
     reports = analyze_csv(SAMPLE_PATH)
     app = AppTest.from_file(str(DASHBOARD)).run(timeout=30)
     assert not app.exception
-    assert app.title[0].value == 'AlignAgent — Organizational Communication Diagnostic'
+    assert app.title[0].value == 'AlignAgent'
+    assert 'Organizational Communication Diagnostic' in [h.value for h in app.header]
     assert any('Synthetic demonstration data — not real Gallup results.' == info.value for info in app.info)
     assert app.warning[0].value == 'Survey results are signals and hypotheses only. They do not establish causes.'
     assert app.selectbox[0].options == [r.team_id for r in reports]
     for report in reports:
         app.selectbox[0].select(report.team_id).run(timeout=30)
         assert not app.exception
-        assert app.metric[0].value == f'{report.grand_mean:.2f} / 5'
-        assert [metric.value for metric in app.metric][1:] == [f'{score:.2f} / 5' for score in report.hierarchy_scores.values()]
-        for table, records in zip(app.dataframe, (report.strengths, report.opportunities)):
-            assert table.value['Q12 Item'].tolist() == [r.item_id for r in records]
-            assert table.value['Mean Score'].tolist() == [r.mean_score for r in records]
-        assert [e.label for e in app.expander if e.label not in ('Methodology', 'Limitations')] == [
-            f'{s.signal_name.replace("_", " ").title()} — {s.source_q12_item}' for s in report.communication_signals
+        text = '\n'.join(m.value for m in app.markdown)
+        assert f'{report.grand_mean:.2f} / 5' in text
+        for score in report.hierarchy_scores.values():
+            assert f'value="{score}"' in text
+        from html import escape
+        for records, stronger in ((report.strengths, True), (report.opportunities, False)):
+            from app.organizational.dashboard import item_rows
+            for row in item_rows(records, stronger):
+                assert row['Q12 Item'] in text
+                assert escape(row['Plain-Language Interpretation']) in text
+                assert f'{row["Mean Score"]:.2f}' in text
+                assert f'Respondents: {row["Respondent Count"]}' in text
+        assert [e.label for e in app.expander if e.label not in ('Methodology', 'Limitations', 'Data Disclosure', 'Methodology & Limitations')] == [
+            f'{s.signal_name.replace("_", " ").title()} · {s.source_q12_item} · {s.observed_score:.2f} / 5 · `{s.relationship_type}` · `Evidence review pending`' for s in report.communication_signals
         ]
         text = '\n'.join(m.value for m in app.markdown)
-        assert report.team_id in text
-        assert report.period in text
+        assert report.team_id in '\n'.join(c.value for c in app.caption)
+        assert report.period in '\n'.join(c.value for c in app.caption)
         assert ', '.join(report.hierarchy_strengths) in text
         assert ', '.join(report.hierarchy_opportunities) in text
         for priority in conversation_priorities(report):
@@ -65,7 +73,8 @@ def test_dashboard_renders_and_team_selector_updates_all_outputs():
             assert signal.caution in [w.value for w in app.warning]
             assert all(question in text for question in signal.manager_questions)
         assert 'Missing items are not imputed' in text
-        assert 'How this prototype works' in [h.value for h in app.sidebar.header]
+        assert 'Select Team' in [h.value for h in app.sidebar.header]
+        assert len(app.sidebar.selectbox) == 1
         assert 'What to Do Next' in [h.value for h in app.header]
         assert 'Validate the hypotheses with employees before taking action.' in [i.value for i in app.info]
         assert 'No causal inference is performed.' in '\n'.join(m.value for m in app.sidebar.markdown)
@@ -75,7 +84,7 @@ def test_dashboard_renders_and_team_selector_updates_all_outputs():
         from app.organizational.dashboard import executive_narrative, NEXT_STEPS
         assert executive_narrative(report) in text
         assert all(step in text for step in NEXT_STEPS)
-        assert text.count('**Evidence status:** needs review') == len(report.communication_signals)
+        assert text.count('**Evidence status:** Evidence review pending') == len(report.communication_signals)
 
 
 def test_download_contains_selected_team_sections_cautions_and_next_steps():
