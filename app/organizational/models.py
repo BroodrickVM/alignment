@@ -46,7 +46,7 @@ class CommunicationSignal:
 @dataclass(frozen=True)
 class OrganizationDiagnosticReport:
     team_id: str
-    grand_mean: float
+    grand_mean: Optional[float]
     hierarchy_scores: Dict[str, Optional[float]]
     strengths: Tuple[Q12Result, ...]
     opportunities: Tuple[Q12Result, ...]
@@ -58,6 +58,10 @@ class OrganizationDiagnosticReport:
     hierarchy_strengths: Tuple[str, ...] = ()
     hierarchy_opportunities: Tuple[str, ...] = ()
     item_means: Optional[Dict[str, float]] = None
+
+    suppressed: bool = False
+    minimum_responses: int = 5
+    data_quality_notes: Tuple[str, ...] = ()
 
     def to_dict(self):
         """Return a JSON-serializable representation, including input provenance."""

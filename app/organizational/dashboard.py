@@ -11,7 +11,9 @@ if str(PROJECT_ROOT) not in sys.path:
 import streamlit as st
 
 from app.organizational.analyzer import analyze_csv
-from app.organizational.report import ITEM_TOPICS, conversation_priorities, render_report
+from app.organizational.workflow import render_workflow, prune_suppressed_notes
+from app.organizational.evidence_validation import load_evidence_validation_matrix
+from app.organizational.report import ITEM_TOPICS, conversation_priorities, render_report, item_tie_notice
 
 SAMPLE_PATH = PROJECT_ROOT / 'data' / 'organizational' / 'sample_q12_results.csv'
 SYNTHETIC_LABEL = 'Synthetic demonstration data — not real Gallup results.'
@@ -57,6 +59,8 @@ def executive_narrative(report):
 
 def diagnostic_summary_text(report):
     """Download the selected report with the same cautions and discussion steps."""
+    if report.suppressed:
+        return SYNTHETIC_LABEL + '\n' + render_report(report)
     text = render_report(report)
     text = text.replace('Hierarchy summaries:', executive_narrative(report) + '\n\nHierarchy scores:', 1)
     next_section = '\n'.join([
@@ -131,7 +135,7 @@ ITEM_LABELS = {
 def evidence_display_label(status):
     """Translate internal status text without modifying stored evidence values."""
     if status in ('needs_review', 'provisional_needs_evidence_review'):
-        return 'Evidence review pending'
+        return 'Further validation needed'
     return status.replace('_', ' ').capitalize()
 
 
@@ -251,11 +255,38 @@ def main():
     with st.container(key='causal-caution'):
         st.warning('Survey results are signals and hypotheses only. They do not establish causes.')
 
+    minimum_responses = int(st.sidebar.number_input(
+        'Minimum responses per item', min_value=1, value=5, step=1,
+        help='Use your organization-approved reporting threshold. Any supplied item below it suppresses the entire team/period.'))
+    st.info(f'Privacy rule: at least {minimum_responses} responses per supplied item. A failing item suppresses all team/period scores, rankings, prompts and downloads. This does not guarantee anonymity.')
+    with st.expander('Data-quality rules'):
+        st.write('Aggregate inputs only. Scores must be finite and between 1 and 5; counts must be positive integers. Duplicate team/item/period rows, malformed files and invalid values reject the entire input. Missing items are not imputed; summaries use available items equally. Varying item counts do not establish a unique respondent total.')
+    matrix = load_evidence_validation_matrix()
+    with st.expander('Evidence validation status'):
+        pending = len(matrix.awaiting_external_review())
+        st.write(f'Initial research reviews recorded: {len(matrix.validations) - pending} of {len(matrix.validations)}. Initial reviews not yet recorded: {pending}. All mappings still need human review; none is a validated communication diagnosis. Full-text access checks remain open where noted. These reviews do not change survey scores or rankings.')
+        st.write('Partially supported means research supports part of the claim. Indirect support means research concerns a related concept. A direct conceptual link describes our interpretation of an item; it does not mean the mapping is directly validated by research.')
+        st.dataframe([{'Dimension': v.dimension_name, 'Research support': evidence_display_label(v.validation_status),
+                       'Support level (provisional)': evidence_display_label(v.external_support_level),
+                       'Review scope': evidence_display_label(v.review_scope),
+                       'Full-text check': evidence_display_label(v.full_text_status),
+                       'Discussion framing': v.allowed_language}
+                      for v in matrix.validations], hide_index=True)
+        st.caption(f'{sum(v.full_text_status == "access_pending" for v in matrix.validations)} full-text checks remain pending because access was unavailable. Targeted section checks are not comprehensive paper appraisals.')
+        for validation in matrix.validations:
+            if validation.validation_status != 'pending':
+                st.markdown(f'**{validation.dimension_name}** — {evidence_display_label(validation.validation_status)}')
+                st.write(validation.external_research_support)
+                st.markdown(f'[Research source]({validation.external_source_reference}) · [Gallup item context]({validation.source_reference})')
+                st.caption(validation.review_notes)
+
     try:
-        reports = analyze_csv(SAMPLE_PATH)
+        reports = analyze_csv(SAMPLE_PATH, minimum_responses=minimum_responses)
     except (ValueError, OSError) as error:
         st.error(f'Unable to load the synthetic demonstration data: {error}')
         st.stop()
+
+    prune_suppressed_notes(st.session_state, reports)
 
     with st.sidebar:
         st.header('Select Team')
@@ -276,8 +307,15 @@ def main():
             st.info(SYNTHETIC_LABEL)
             st.caption('The bundled dataset contains fictional teams and invented scores for demonstration only.')
         with st.expander('Limitations'):
-            st.write('Results are relative to each team and period. Small groups may create privacy risks; no suppression policy is implemented.')
+            st.write('Results are relative to each team and period. Small groups may create privacy risks; the configured minimum-response rule suppresses the entire team/period when any supplied item fails.')
             st.caption('See Methodology & Limitations below for the full cautions.')
+
+    if report.suppressed:
+        for limitation in report.limitations:
+            st.warning(limitation)
+        st.stop()
+    for note in report.data_quality_notes:
+        st.warning(note)
 
     st.header('Executive Summary')
     st.caption(f'Team ID: {report.team_id} · Period: {report.period or "Not supplied"}')
@@ -316,6 +354,8 @@ def main():
     st.caption('Scores are aggregated team-level means from synthetic demonstration data.')
     st.caption('Bars show the full valid 1–5 scale, starting at 1. Missing areas are unavailable and are not imputed. Tied areas are labeled explicitly.')
 
+    if item_tie_notice(report):
+        st.info(item_tie_notice(report))
     st.header('Stronger Signals')
     st.caption('Relative strengths within this team and period.')
     signal_cards(report.strengths, True)
@@ -332,18 +372,25 @@ def main():
         evidence = evidence_display_label(signal.evidence_status)
         tone = {'direct': 'teal', 'partial': 'gray', 'indirect': 'gold'}.get(signal.relationship_type, 'gray')
         with st.container(key=f'signal-{signal.relationship_type}-{signal_index}'):
-            with st.expander(f'{name} · {signal.source_q12_item} · {signal.observed_score:.2f} / 5 · `{signal.relationship_type}` · `{evidence}`'):
+            with st.expander(f'{name} · {signal.source_q12_item} · {signal.observed_score:.2f} / 5 · `{signal.relationship_type} conceptual link` · `{evidence}`'):
                 st.markdown(
-                    f'<span class="aa-badge {tone}">{escape(signal.relationship_type)} relationship</span> '
+                    f'<span class="aa-badge {tone}">{escape(signal.relationship_type)} conceptual link</span> '
                     f'<span class="aa-badge gray">Evidence: {escape(evidence)}</span>',
                     unsafe_allow_html=True,
                 )
                 st.subheader(name)
                 st.write(f'**Source Q12 item:** {signal.source_q12_item}')
                 st.write(f'**Observed score:** {signal.observed_score:.2f} / 5')
-                st.write(f'**Relationship type:** {signal.relationship_type}')
+                st.write(f'**Conceptual link to communication:** {signal.relationship_type}. This is not a research-validation rating.')
                 st.write(f'**Evidence status:** {evidence}')
-                st.caption(f'Confidence: {signal.confidence_status}')
+                st.caption('Interpretation remains provisional; no numerical confidence is estimated.')
+                validation = matrix.get_by_source_item(signal.source_q12_item)
+                if validation is not None:
+                    st.write('**Preliminary mapping review:** ' + evidence_display_label(validation.validation_status))
+                    st.write('**Permitted discussion framing:** ' + validation.allowed_language)
+                    if validation.validation_status != 'pending':
+                        st.markdown(f'[Research source]({validation.external_source_reference})')
+                        st.caption(validation.review_notes)
                 st.write(f'**Interpretation:** {signal.interpretation}')
                 st.warning(signal.caution)
                 st.subheader('Questions to discuss with the team')
@@ -385,6 +432,7 @@ def main():
         'Download Diagnostic Summary', data=diagnostic_summary_text(report),
         file_name='alignagent-diagnostic-summary.txt', mime='text/plain; charset=utf-8', type='primary',
     )
+    render_workflow(report, matrix)
     st.markdown('<footer class="aa-footer">AlignAgent prototype. Inspired by contemporary employee-engagement reporting practices. Not affiliated with or endorsed by Gallup.</footer>', unsafe_allow_html=True)
 
 

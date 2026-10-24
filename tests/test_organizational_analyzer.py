@@ -46,7 +46,7 @@ def test_calculations_and_ordering():
 
 
 def test_missing_items_and_unweighted_means():
-    report, = analyze_results([Q12Result('team', 'Q01', 1, 1), Q12Result('team', 'Q03', 5, 100)])
+    report, = analyze_results([Q12Result('team', 'Q01', 1, 1), Q12Result('team', 'Q03', 5, 100)], minimum_responses=1)
     assert report.grand_mean == 3
     assert len(report.missing_items) == 10
     assert report.hierarchy_scores['Growth'] is None

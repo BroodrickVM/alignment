@@ -1,11 +1,13 @@
 """Separate evidence-review records; never updates operational rubric or scores.
 
-The bundled judgments were supplied in the project request. A source title is
+Initial support judgments were supplied in the project request; subsequent
+preliminary reviews record sources, review scope and limits explicitly. A source title is
 provenance, not proof that the underlying deck or external research was reviewed.
 Support labels are categorical provisional judgments, not confidence percentages.
 """
 import csv
 from collections import Counter
+from datetime import date
 from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Tuple
@@ -19,7 +21,10 @@ RECOMMENDED_STATUSES = (
     'partial_support_external_review_pending',
     'indirect_support_external_review_pending',
     'limited_support_external_review_required',
+    'partially_supported', 'indirect_support', 'insufficient_evidence', 'validated',
 )
+VALIDATION_STATUSES = ('pending', 'validated', 'partially_supported', 'indirect_support', 'insufficient_evidence')
+RELATIONSHIP_TYPES = ('direct', 'partial', 'indirect')
 SOURCE_ITEMS = ('Q01', 'Q02', 'Q04', 'Q05', 'Q06', 'Q07', 'Q08', 'Q09', 'Q11')
 
 
@@ -49,16 +54,50 @@ class EvidenceValidation:
     source_reference: str
     review_notes: str
 
+    validation_status: str
+    relationship_type: str
+    allowed_language: str
+    prohibited_language: str
+    external_source_reference: str
+    reviewer: str
+    reviewed_on: str
+    review_scope: str
+    full_text_status: str
+
     def __post_init__(self):
         for field in fields(self):
             value = getattr(self, field.name)
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f'{field.name} must be nonempty text.')
+        if self.review_scope not in ('pending', 'abstract_only', 'targeted_full_text_sections'):
+            raise ValueError('Invalid review_scope.')
+        if self.full_text_status not in ('pending', 'access_pending', 'targeted_sections_checked'):
+            raise ValueError('Invalid full_text_status.')
+        if (self.review_scope == 'targeted_full_text_sections') != (self.full_text_status == 'targeted_sections_checked'):
+            raise ValueError('Review scope and full-text status must agree.')
+        if self.validation_status not in VALIDATION_STATUSES:
+            raise ValueError('Invalid validation_status.')
+        if self.relationship_type not in RELATIONSHIP_TYPES:
+            raise ValueError('Invalid relationship_type.')
+        if self.external_support_level == 'pending' and self.validation_status != 'pending':
+            raise ValueError('Pending external evidence requires pending validation status.')
+        if self.validation_status != 'pending' and any(
+            getattr(self, key) in ('pending', 'not_yet_reviewed')
+            for key in ('external_source_reference', 'reviewer', 'reviewed_on')
+        ):
+            raise ValueError('Completed reviews require source references, reviewer and review date.')
+        if self.validation_status != 'pending':
+            try:
+                date.fromisoformat(self.reviewed_on)
+            except ValueError as error:
+                raise ValueError('reviewed_on must be an ISO date for completed reviews.') from error
         if self.source_item not in SOURCE_ITEMS:
             raise ValueError('source_item must be one of the nine currently mapped Q12 items.')
         validate_support_level(self.gallup_support_level, 'gallup')
         validate_support_level(self.external_support_level, 'external')
         validate_support_level(self.overall_support_level, 'overall')
+        if self.recommended_status in VALIDATION_STATUSES and self.recommended_status != self.validation_status:
+            raise ValueError('Reviewed recommended_status must match validation_status.')
         if self.recommended_status not in RECOMMENDED_STATUSES:
             raise ValueError('Invalid recommended_status.')
 

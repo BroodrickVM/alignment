@@ -32,6 +32,14 @@ PRIORITY_TOPICS = {
 }
 
 
+ITEM_TIE_NOTICE = ('Item rankings include ties. Cards show up to three items per list, with equal scores ordered by item ID; a listed item is not uniquely stronger or weaker than other items with the same score. Communication selection includes all mapped items tied at the cutoff.')
+
+
+def item_tie_notice(report):
+    values = tuple((report.item_means or {}).values())
+    return ITEM_TIE_NOTICE if len(set(values)) < len(values) else ''
+
+
 def conversation_priorities(report):
     """Offer up to three signal-grounded discussion topics, never prescriptions.
 
@@ -53,6 +61,8 @@ def conversation_priorities(report):
 
 
 def render_report(report):
+    if report.suppressed:
+        return '\n'.join((f'Organizational Communication Diagnostic — {report.team_id}', *report.limitations))
     lines = [f'Organizational Communication Diagnostic — {report.team_id}',
              '', '1. Executive Summary',
              f'Team ID: {report.team_id}',
@@ -64,6 +74,8 @@ def render_report(report):
              'Hierarchy summaries:']
     lines.extend(f'  {name}: {score:.2f} / 5' if score is not None else f'  {name}: unavailable' for name, score in report.hierarchy_scores.items())
     lines.append('Hierarchy ties are listed together; rankings are relative to available results.')
+    if item_tie_notice(report):
+        lines.append(item_tie_notice(report))
     for label, records, stronger in [
         ('2. Stronger Signals', report.strengths, True),
         ('3. Areas for Investigation', report.opportunities, False),
@@ -104,15 +116,17 @@ def render_report(report):
         lines.append('  No communication signals selected; no signal-based conversation priorities generated.')
     lines.extend(['', '6. Limitations'])
     lines.extend(f'  - {limitation}' for limitation in report.limitations)
+    lines.extend(f'  - Data quality: {note}' for note in report.data_quality_notes)
     return '\n'.join(lines)
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('csv_path')
+    parser.add_argument('--minimum-responses', type=int, default=5)
     args = parser.parse_args(argv)
     try:
-        reports = analyze_csv(args.csv_path)
+        reports = analyze_csv(args.csv_path, minimum_responses=args.minimum_responses)
     except (ValueError, OSError) as error:
         parser.error(str(error))
     print('\n\n'.join(render_report(report) for report in reports))

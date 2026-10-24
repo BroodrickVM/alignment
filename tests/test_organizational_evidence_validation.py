@@ -29,28 +29,33 @@ def row():
     return asdict(load_evidence_validation_matrix().validations[0])
 
 
-def test_all_nine_dimensions_and_exact_initial_judgments():
+def test_all_nine_dimensions_initial_support_and_current_review_outcomes():
     matrix = load_evidence_validation_matrix()
     expected = (
-        ('expectations_and_direction', 'Q01', 'strong', 'gallup_supported_external_review_pending'),
-        ('information_and_resource_access', 'Q02', 'moderate', 'partial_support_external_review_pending'),
-        ('recognition_communication', 'Q04', 'strong', 'gallup_supported_external_review_pending'),
-        ('relational_support', 'Q05', 'moderate', 'indirect_support_external_review_pending'),
-        ('developmental_communication', 'Q06', 'strong', 'gallup_supported_external_review_pending'),
-        ('employee_voice', 'Q07', 'moderate', 'partial_support_external_review_pending'),
-        ('purpose_alignment', 'Q08', 'moderate', 'partial_support_external_review_pending'),
-        ('team_norms_and_coordination', 'Q09', 'limited', 'limited_support_external_review_required'),
-        ('progress_feedback', 'Q11', 'strong', 'gallup_supported_external_review_pending'),
+        ('expectations_and_direction', 'Q01', 'strong', 'partially_supported'),
+        ('information_and_resource_access', 'Q02', 'moderate', 'indirect_support'),
+        ('recognition_communication', 'Q04', 'strong', 'partially_supported'),
+        ('relational_support', 'Q05', 'moderate', 'indirect_support'),
+        ('developmental_communication', 'Q06', 'strong', 'partially_supported'),
+        ('employee_voice', 'Q07', 'moderate', 'partially_supported'),
+        ('purpose_alignment', 'Q08', 'moderate', 'indirect_support'),
+        ('team_norms_and_coordination', 'Q09', 'limited', 'indirect_support'),
+        ('progress_feedback', 'Q11', 'strong', 'partially_supported'),
     )
     assert len(matrix.validations) == 9
     assert [(v.dimension_id, v.source_item, v.gallup_support_level, v.recommended_status) for v in matrix.validations] == list(expected)
     for record, dimension in zip(matrix.validations, load_rubric().dimensions):
         assert record.dimension_name == dimension.dimension_name
-        assert record.external_research_support == 'not_yet_reviewed'
-        assert record.external_support_level == 'pending'
+        if record.validation_status == 'pending':
+            assert record.external_research_support == 'not_yet_reviewed'
+            assert record.external_support_level == 'pending'
         assert record.overall_support_level == record.gallup_support_level + '_provisional'
-        assert record.source_reference == 'Full Day_Creating an Engaging Workplace for Managers_PPT'
-        assert 'not been independently verified' in record.review_notes
+        if record.validation_status == 'pending':
+            assert record.source_reference == 'Full Day_Creating an Engaging Workplace for Managers_PPT'
+            assert 'not been independently verified' in record.review_notes
+        else:
+            assert record.source_reference.startswith('https://www.gallup.com/')
+            assert 'pending' in record.review_notes
         assert record.claim_being_made.startswith('Lower relative results may warrant investigating')
         assert get_validation_by_dimension_id(matrix, record.dimension_id) is record
         assert get_validation_by_source_item(matrix, record.source_item) is record
@@ -61,13 +66,11 @@ def test_all_nine_dimensions_and_exact_initial_judgments():
 
 def test_review_queries_and_status_counts():
     matrix = load_evidence_validation_matrix()
-    assert dimensions_awaiting_external_review(matrix) == matrix.validations
-    assert [v.dimension_id for v in dimensions_with_limited_support(matrix)] == ['team_norms_and_coordination']
+    assert [v.source_item for v in dimensions_awaiting_external_review(matrix)] == []
+    assert [v.dimension_id for v in dimensions_with_limited_support(matrix)] == ['information_and_resource_access', 'relational_support', 'purpose_alignment', 'team_norms_and_coordination']
     assert counts_by_recommended_status(matrix) == {
-        'gallup_supported_external_review_pending': 4,
-        'partial_support_external_review_pending': 3,
-        'indirect_support_external_review_pending': 1,
-        'limited_support_external_review_required': 1,
+        'partially_supported': 5,
+        'indirect_support': 4,
     }
     reviewed = replace(matrix.validations[0], external_support_level='limited', external_research_support='Example review note')
     subset = EvidenceValidationMatrix((reviewed,))

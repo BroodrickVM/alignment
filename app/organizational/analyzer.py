@@ -63,19 +63,35 @@ def _group_results(results):
     return groups
 
 
-def analyze_results(results, mappings=None):
+def analyze_results(results, mappings=None, *, minimum_responses=5):
     """Return one report per team/period. Means weight available items equally.
 
     Opportunities are the bottom three items; communication signals include all
     mapped items at or below the third-lowest score, preserving cutoff ties.
     Rankings break ties by item ID and are relative, not quality thresholds.
     """
+    if type(minimum_responses) is not int or minimum_responses < 1:
+        raise ValueError('minimum_responses must be a positive integer.')
     configured = tuple(DEFAULT_MAPPINGS if mappings is None else mappings)
     if len({m.item_id for m in configured}) != len(configured):
         raise ValueError('Mapping item IDs must be unique.')
     mapping_by_item = {m.item_id: m for m in configured}
     reports = []
     for (team, period), records in _group_results(results).items():
+        missing = tuple(item for item in ITEM_IDS if item not in {r.item_id for r in records})
+        quality = []
+        if missing:
+            quality.append('Missing items: ' + ', '.join(missing) + '. No values were imputed; incomplete summaries may not be comparable.')
+        if len({r.respondent_count for r in records}) > 1:
+            quality.append('Respondent counts vary across items; they do not establish a unique team respondent total.')
+        privacy = f'Minimum reporting threshold: {minimum_responses} responses per supplied item. Entire team/period diagnostics are suppressed if any item falls below this threshold. This rule does not guarantee anonymity.'
+        if any(r.respondent_count < minimum_responses for r in records):
+            reports.append(OrganizationDiagnosticReport(
+                team, None, {}, (), (), (), (),
+                ('Results are suppressed because this team/period does not meet the minimum response threshold required for privacy protection.', privacy),
+                period=period, suppressed=True, minimum_responses=minimum_responses,
+            ))
+            continue
         by_item = {r.item_id: r for r in records}
         ascending = sorted(records, key=lambda r: (r.mean_score, r.item_id))
         strengths = tuple(sorted(records, key=lambda r: (-r.mean_score, r.item_id))[:3])
@@ -93,7 +109,7 @@ def analyze_results(results, mappings=None):
             'Communication mappings and prompts are provisional, need evidence review, and are not a validated diagnostic instrument.',
             'Strengths and opportunities are relative within this team and period; no absolute good/bad thresholds are used. Cutoff ties may produce more than three communication signals.',
             'GrandMean and hierarchy means equally weight available item means, not respondent counts. Response distributions, uncertainty, and nonresponse bias cannot be assessed from these aggregates.',
-            'Small groups may pose re-identification risks; apply an organization-approved minimum reporting size before sharing. No suppression policy is implemented.',
+            privacy,
             'Percentile ranks, when supplied, are passed through only; their benchmark source and comparability are not verified. No benchmark percentile is inferred.',
         ]
         if missing:
@@ -106,9 +122,10 @@ def analyze_results(results, mappings=None):
             tuple(name for name, score in present.items() if score == max(present.values())),
             tuple(name for name, score in present.items() if score == min(present.values())),
             {item: by_item[item].mean_score for item in ITEM_IDS if item in by_item},
+            minimum_responses=minimum_responses, data_quality_notes=tuple(quality),
         ))
     return tuple(reports)
 
 
-def analyze_csv(source, mappings=None):
-    return analyze_results(load_q12_csv(source), mappings)
+def analyze_csv(source, mappings=None, *, minimum_responses=5):
+    return analyze_results(load_q12_csv(source), mappings, minimum_responses=minimum_responses)

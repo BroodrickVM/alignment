@@ -40,9 +40,9 @@ def test_dashboard_renders_and_team_selector_updates_all_outputs():
     assert 'Organizational Communication Diagnostic' in [h.value for h in app.header]
     assert any('Synthetic demonstration data — not real Gallup results.' == info.value for info in app.info)
     assert app.warning[0].value == 'Survey results are signals and hypotheses only. They do not establish causes.'
-    assert app.selectbox[0].options == [r.team_id for r in reports]
+    assert app.sidebar.selectbox[0].options == [r.team_id for r in reports]
     for report in reports:
-        app.selectbox[0].select(report.team_id).run(timeout=30)
+        app.sidebar.selectbox[0].select(report.team_id).run(timeout=30)
         assert not app.exception
         text = '\n'.join(m.value for m in app.markdown)
         assert f'{report.grand_mean:.2f} / 5' in text
@@ -56,8 +56,8 @@ def test_dashboard_renders_and_team_selector_updates_all_outputs():
                 assert escape(row['Plain-Language Interpretation']) in text
                 assert f'{row["Mean Score"]:.2f}' in text
                 assert f'Respondents: {row["Respondent Count"]}' in text
-        assert [e.label for e in app.expander if e.label not in ('Methodology', 'Limitations', 'Data Disclosure', 'Methodology & Limitations')] == [
-            f'{s.signal_name.replace("_", " ").title()} · {s.source_q12_item} · {s.observed_score:.2f} / 5 · `{s.relationship_type}` · `Evidence review pending`' for s in report.communication_signals
+        assert [e.label for e in app.expander if e.label not in ('Methodology', 'Limitations', 'Data Disclosure', 'Methodology & Limitations', 'Data-quality rules', 'Evidence validation status')] == [
+            f'{s.signal_name.replace("_", " ").title()} · {s.source_q12_item} · {s.observed_score:.2f} / 5 · `{s.relationship_type} conceptual link` · `Further validation needed`' for s in report.communication_signals
         ]
         text = '\n'.join(m.value for m in app.markdown)
         assert report.team_id in '\n'.join(c.value for c in app.caption)
@@ -79,12 +79,12 @@ def test_dashboard_renders_and_team_selector_updates_all_outputs():
         assert 'Validate the hypotheses with employees before taking action.' in [i.value for i in app.info]
         assert 'No causal inference is performed.' in '\n'.join(m.value for m in app.sidebar.markdown)
         assert 'Methodology' in [e.label for e in app.sidebar.expander]
-        assert len(app.get('download_button')) == 1
+        assert len(app.get('download_button')) == 2
         assert app.get('download_button')[0].label == 'Download Diagnostic Summary'
         from app.organizational.dashboard import executive_narrative, NEXT_STEPS
         assert executive_narrative(report) in text
         assert all(step in text for step in NEXT_STEPS)
-        assert text.count('**Evidence status:** Evidence review pending') == len(report.communication_signals)
+        assert text.count('**Evidence status:** Further validation needed') == len(report.communication_signals)
 
 
 def test_download_contains_selected_team_sections_cautions_and_next_steps():
