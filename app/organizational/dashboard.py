@@ -10,6 +10,9 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import streamlit as st
 
+from app.organizational.action_plans import (
+    load_action_plans, action_plans_for_report, ACTION_CAPTION,
+)
 from app.organizational.analyzer import analyze_csv
 from app.organizational.workflow import render_workflow, prune_suppressed_notes
 from app.organizational.evidence_validation import load_evidence_validation_matrix
@@ -64,7 +67,9 @@ def diagnostic_summary_text(report):
     text = render_report(report)
     text = text.replace('Hierarchy summaries:', executive_narrative(report) + '\n\nHierarchy scores:', 1)
     next_section = '\n'.join([
-        '6. What to Do Next', 'Suggested discussion steps, not prescriptions.',
+        '6. Suggested Manager Actions', ACTION_CAPTION,
+        *action_summary_lines(report), '',
+        'What to Do Next', 'Suggested discussion steps, not prescriptions.',
         *(f'{number}. {step}' for number, step in enumerate(NEXT_STEPS, 1)),
         VALIDATION_CAUTION, '', '7. Limitations',
     ])
@@ -76,6 +81,47 @@ def diagnostic_summary_text(report):
         '- ' + MISSING_ITEMS_CAUTION,
     ])
 
+
+
+def action_summary_lines(report):
+    lines = []
+    for selected in action_plans_for_report(report, load_action_plans()):
+        plan = selected.plan
+        lines.extend([f'Focus area: {plan.dimension_name}',
+                      f'Source Q12-style item: {plan.source_item}',
+                      f'Observed score: {selected.observed_score:.2f} / 5',
+                      f'Why highlighted: {selected.why_highlighted}',
+                      f'Suggested action: {plan.suggested_action}',
+                      f'Suggested timeline: {plan.suggested_timeline}',
+                      f'Success indicator: {plan.success_indicator}',
+                      f'Follow-up guidance: {plan.follow_up_guidance}',
+                      f'Caution: {plan.action_caution}', ''])
+    return lines
+
+
+def render_action_cards(report):
+    st.header('Suggested Manager Actions')
+    st.caption(ACTION_CAPTION)
+    cards = []
+    for selected in action_plans_for_report(report, load_action_plans()):
+        plan = selected.plan
+        details = (
+            ('Source Q12-style item', plan.source_item),
+            ('Observed score', f'{selected.observed_score:.2f} / 5'),
+            ('Why highlighted', selected.why_highlighted),
+            ('Suggested action', plan.suggested_action),
+            ('Suggested timeline', plan.suggested_timeline),
+            ('Success indicator', plan.success_indicator),
+            ('Follow-up guidance', plan.follow_up_guidance),
+            ('Non-causal caution', plan.action_caution),
+        )
+        cards.append('<article class="aa-card"><h3>' + escape(plan.dimension_name) + '</h3>' +
+                     ''.join(f'<p><strong>{escape(label)}:</strong> {escape(value)}</p>'
+                             for label, value in details) + '</article>')
+    _card_grid(cards)
+    if not cards:
+        st.info('No selected communication signals; no suggested manager actions generated.')
+    st.caption('Managers decide what to discuss and whether to agree an action in the manager discussion workflow.')
 
 
 def item_rows(records, stronger):
@@ -407,6 +453,8 @@ def main():
     ])
     if not priorities:
         st.info('No communication signals selected; no signal-based conversation priorities generated.')
+
+    render_action_cards(report)
 
     st.header('What to Do Next')
     st.caption('Suggested discussion steps, not prescriptions.')
