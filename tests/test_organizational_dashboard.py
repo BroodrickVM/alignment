@@ -56,7 +56,7 @@ def test_dashboard_renders_and_team_selector_updates_all_outputs():
                 assert escape(row['Plain-Language Interpretation']) in text
                 assert f'{row["Mean Score"]:.2f}' in text
                 assert f'Respondents: {row["Respondent Count"]}' in text
-        assert [e.label for e in app.expander if e.label not in ('Methodology', 'Limitations', 'Data Disclosure', 'Methodology & Limitations', 'Data-quality rules', 'Evidence validation status')] == [
+        assert [e.label for e in app.expander if e.label not in ('Methodology', 'Limitations', 'Data Disclosure', 'Methodology & Limitations', 'Data-quality rules', 'Evidence validation status', 'Why these Q12-style items?')] == [
             f'{s.signal_name.replace("_", " ").title()} · {s.source_q12_item} · {s.observed_score:.2f} / 5 · `{s.relationship_type} conceptual link` · `Further validation needed`' for s in report.communication_signals
         ]
         text = '\n'.join(m.value for m in app.markdown)

@@ -265,7 +265,7 @@ def main():
     with st.expander('Evidence validation status'):
         pending = len(matrix.awaiting_external_review())
         st.write(f'Initial research reviews recorded: {len(matrix.validations) - pending} of {len(matrix.validations)}. Initial reviews not yet recorded: {pending}. All mappings still need human review; none is a validated communication diagnosis. Full-text access checks remain open where noted. These reviews do not change survey scores or rankings.')
-        st.write('Partially supported means research supports part of the claim. Indirect support means research concerns a related concept. A direct conceptual link describes our interpretation of an item; it does not mean the mapping is directly validated by research.')
+        st.write('Partially supported means research supports part of the discussion framing, not the full mapping. Indirect support means research concerns a related construct, not the Q12 item itself. A direct conceptual link does not mean direct empirical validation. These are provisional review judgments, not statistical confidence scores or validated causal effects.')
         st.dataframe([{'Dimension': v.dimension_name, 'Research support': evidence_display_label(v.validation_status),
                        'Support level (provisional)': evidence_display_label(v.external_support_level),
                        'Review scope': evidence_display_label(v.review_scope),
@@ -364,6 +364,11 @@ def main():
     signal_cards(report.opportunities, False)
 
     st.header('Communication Signals to Explore')
+    with st.expander('Why these Q12-style items?'):
+        st.write('Only nine selected Q12-style items are mapped to communication dimensions. These mappings are investigation hypotheses, not causal diagnoses; mapping does not mean an item directly measures communication or that communication caused its score.')
+        st.write('Direct, partial, and indirect describe the conceptual relationship, not statistical confidence scores. A direct conceptual link does not mean direct empirical validation. Evidence judgments remain provisional.')
+        st.write('Q03, Q10, and Q12 remain intentionally unmapped. They can appear in general engagement strengths and areas for investigation without becoming communication dimensions.')
+        st.caption('Full item-by-item rationale, Gallup context, independent research, and limitations: docs/TOOL2_Q12_ALIGNMENT.md in the project documentation.')
     st.caption('Open a signal to explore the interpretation and questions. Relationships are provisional associations, not causal explanations.')
     if not report.communication_signals:
         st.info('No mapped items in the lower-scoring selection.')
