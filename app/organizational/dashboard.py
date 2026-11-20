@@ -393,6 +393,13 @@ def main():
                         st.caption(validation.review_notes)
                 st.write(f'**Interpretation:** {signal.interpretation}')
                 st.warning(signal.caution)
+                if st.button('Prepare communication in Message Coach',
+                             key=f'prepare-message-{signal.source_q12_item}'):
+                    from app.tool_handoff import prepare_handoff
+                    from app.tool1.dashboard import main as message_coach
+                    prepare_handoff(st.session_state, report, signal.source_q12_item)
+                    st.switch_page(st.Page(message_coach, title='Tool 1 — Message Coach',
+                                           url_path='message-coach'))
                 st.subheader('Questions to discuss with the team')
                 for number, question in enumerate(signal.manager_questions, 1):
                     st.write(f'{number}. {question}')

@@ -31,7 +31,7 @@ def overview():
     with st.container(key='tool-card-one'):
         st.markdown('<div class="ca-tag">Tool 1 · Review a message</div>',unsafe_allow_html=True)
         st.header('Message Coach')
-        st.write('Get structured feedback on a task instruction or performance feedback draft before you share it.')
+        st.write('Draft and review manager communication informed by a selected team signal, or open Message Coach independently.')
         st.markdown('- Review your draft against a message-specific rubric.\n- Inspect the evidence behind each rating.\n- Download the review for your own revision.')
         st.caption('Live evaluation requires your GW Azure connection. Automated rewriting is not available yet.')
         if st.button('Open',key='open-message-coach',type='primary',use_container_width=True):
@@ -39,15 +39,19 @@ def overview():
     with st.container(key='tool-card-two'):
         st.markdown('<div class="ca-tag">Tool 2 · Explore team signals</div>',unsafe_allow_html=True)
         st.header('Team Diagnostic')
-        st.write('Explore aggregate survey patterns and turn a selected signal into a structured team discussion.')
+        st.write('Identify communication-related survey signals and carry a selected focus area into Message Coach.')
         st.markdown('- See relative strengths and areas to explore.\n- Review evidence and privacy limitations.\n- Capture learning and export a follow-up summary.')
         st.caption('Currently uses synthetic demonstration data. Small-group results are suppressed by the reporting rule.')
         if st.button('Open',key='open-team-diagnostic',type='primary',use_container_width=True):
             st.switch_page(st.Page(team_diagnostic,title='Tool 2 — Team Diagnostic',url_path='team-diagnostic'))
-    st.markdown('<p class="ca-foot">A starting point for discussion, not a diagnosis. Survey interpretations and message ratings remain provisional. Nothing is automatically sent between tools or to employees.</p>',unsafe_allow_html=True)
+    st.markdown('<p class="ca-foot">A starting point for discussion, not a diagnosis. Survey interpretations and message ratings remain provisional. Selected non-sensitive context can be passed between tools in the current browser session. Nothing is automatically sent to employees. Model evaluation requires explicit draft submission with consent.</p>',unsafe_allow_html=True)
 
 
 if __name__=='__main__':
+    # Retain manager-written widget content while another shared page is open.
+    for key in ('tool1_draft', 'tool1_revision'):
+        if key in st.session_state:
+            st.session_state[key] = st.session_state[key]
     st.navigation([
         st.Page(overview,title='Overview',default=True),
         st.Page(message_coach,title='Tool 1 — Message Coach',url_path='message-coach'),

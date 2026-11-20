@@ -47,6 +47,33 @@ def clear_message():
     st.session_state.pop('tool1_rescore',None)
 
 
+def render_team_context():
+    from app.tool_handoff import CONTEXT_KEY, clear_handoff
+    context = st.session_state.get(CONTEXT_KEY)
+    if not context:
+        return
+    st.subheader('Context from Team Diagnostic')
+    st.caption('Selected by the manager in Tool 2; temporary context in this browser session.')
+    st.write(f'**Focus area:** {context["dimension_name"]}')
+    st.write(f'**Source Q12-style item:** {context["source_item"]}')
+    st.write(f'**Observed score:** {context["observed_score"]:.2f} / 5')
+    st.write(context['interpretation'])
+    st.write('**Questions you may explore:**')
+    for question in context['manager_questions']:
+        st.write('- ' + question)
+    if context.get('suggested_action'):
+        st.write('**Discussion option:** ' + context['suggested_action'])
+    if context.get('suggested_timeline'):
+        st.write('**Suggested timeline for discussion:** ' + context['suggested_timeline'])
+    st.info('Use this context to inform your draft. The survey result is a discussion signal, not a causal diagnosis. Suggested actions and timelines are options, not commitments or proven interventions.')
+    st.caption('Choose the message type that fits your communication. Edit any drafting scaffold before evaluation. Existing drafts and completed reviews are retained.')
+    st.button('Clear Team Diagnostic context', on_click=clear_handoff, args=(st.session_state,))
+    if st.button('Return to Team Diagnostic'):
+        from app.organizational.dashboard import main as team_diagnostic
+        st.switch_page(st.Page(team_diagnostic, title='Tool 2 — Team Diagnostic',
+                               url_path='team-diagnostic'))
+
+
 def main():
     st.set_page_config(page_title='CommsAlign — Message Coach',layout='wide')
     st.title('Tool 1 — Message Coach')
@@ -56,10 +83,11 @@ def main():
     st.session_state.setdefault('tool1_result',None)
     if (st.session_state['tool1_result'] or {}).get('sample'):
         st.session_state['tool1_result']=None
+    render_team_context()
     with st.form('tool1_review'):
         kind=st.selectbox('Message type',list(RUBRICS),format_func=lambda value:value.replace('_',' ').title())
         draft=st.text_area('Draft message',height=200,key='tool1_draft')
-        consent=st.checkbox('I agree to send this draft to the configured GW Azure model for evaluation.')
+        consent=st.checkbox('I agree to send this draft to the configured GW Azure model for evaluation.', key='tool1_model_consent')
         submit=st.form_submit_button('Evaluate draft')
     if submit:
         st.session_state['tool1_result']=None
@@ -67,6 +95,8 @@ def main():
         st.session_state.pop('tool1_rescore',None)
         if not draft.strip():
             st.error('Enter a draft message to evaluate.')
+        elif draft == st.session_state.get('tool2_message_scaffold'):
+            st.error('Edit the drafting scaffold into your own message before evaluating.')
         elif not consent:
             st.error('Confirm the model submission before evaluating.')
         else:
