@@ -14,6 +14,7 @@ from app.organizational.action_plans import (
     load_action_plans, action_plans_for_report, ACTION_CAPTION,
 )
 from app.organizational.analyzer import analyze_csv
+from app.organizational.data_inputs import analyze_uploaded_csv, csv_template
 from app.organizational.workflow import render_workflow, prune_suppressed_notes
 from app.organizational.evidence_validation import load_evidence_validation_matrix
 from app.organizational.report import ITEM_TOPICS, conversation_priorities, render_report, item_tie_notice
@@ -60,10 +61,10 @@ def executive_narrative(report):
     return f'{hierarchy} {communication}'
 
 
-def diagnostic_summary_text(report):
+def diagnostic_summary_text(report, dataset_label=SYNTHETIC_LABEL):
     """Download the selected report with the same cautions and discussion steps."""
     if report.suppressed:
-        return SYNTHETIC_LABEL + '\n' + render_report(report)
+        return dataset_label + '\n' + render_report(report)
     text = render_report(report)
     text = text.replace('Hierarchy summaries:', executive_narrative(report) + '\n\nHierarchy scores:', 1)
     next_section = '\n'.join([
@@ -75,7 +76,7 @@ def diagnostic_summary_text(report):
     ])
     text = text.replace('6. Limitations', next_section, 1)
     return '\n'.join([
-        SYNTHETIC_LABEL,
+        dataset_label,
         'Survey results are signals and hypotheses only. They do not establish causes.',
         'No causal inference is performed.', '', text,
         '- ' + MISSING_ITEMS_CAUTION,
@@ -297,7 +298,24 @@ def main():
     with st.container(key='page-title'):
         st.header('Organizational Communication Diagnostic')
     st.write('Translate aggregated engagement survey results into structured communication signals and manager discussion prompts.')
-    st.caption('Uses synthetic Q12-style demonstration data.')
+    source_mode = st.radio('Data source', ('Use demonstration data', 'Upload CSV'),
+                           horizontal=True, key='tool2_data_source')
+    uploaded = source_mode == 'Upload CSV'
+    dataset_label = 'Uploaded dataset' if uploaded else SYNTHETIC_LABEL
+    st.caption(dataset_label)
+    upload = None
+    if uploaded:
+        st.caption('Required columns: team_id, item_id, mean_score, respondent_count. '
+                   'Optional columns: period, percentile_rank. Use Q01–Q12 item IDs, '
+                   'finite mean scores from 1 to 5, positive integer respondent counts, '
+                   'and nonempty team IDs. Period is optional; blank periods are treated as not supplied. '
+                   'If supplied, percentile_rank must be between 0 and 100. '
+                   'Duplicate team/item/period records and unsupported columns are rejected.')
+        st.info('Upload only aggregated survey results. Do not upload employee names, emails, open-text comments, or other personally identifiable information.')
+        st.download_button('Download CSV template', data=csv_template(SAMPLE_PATH),
+                           file_name='commsalign-survey-template.csv', mime='text/csv')
+        st.caption('The template contains a few synthetic example rows, not a complete survey.')
+        upload = st.file_uploader('Upload Q12-style survey results', type=['csv'])
     with st.container(key='causal-caution'):
         st.warning('Survey results are signals and hypotheses only. They do not establish causes.')
 
@@ -327,9 +345,16 @@ def main():
                 st.caption(validation.review_notes)
 
     try:
-        reports = analyze_csv(SAMPLE_PATH, minimum_responses=minimum_responses)
+        if uploaded:
+            if upload is None:
+                st.info('Choose a compatible CSV file to run the diagnostic.')
+                st.stop()
+            reports = analyze_uploaded_csv(upload, minimum_responses=minimum_responses)
+        else:
+            reports = analyze_csv(SAMPLE_PATH, minimum_responses=minimum_responses)
     except (ValueError, OSError) as error:
-        st.error(f'Unable to load the synthetic demonstration data: {error}')
+        st.error(f'Unable to analyze {"uploaded CSV" if uploaded else "demonstration data"}: {error}')
+        st.caption('Check the CSV headers and the indicated row. Use only the four required columns and supported optional columns shown above; correct invalid or duplicate records and upload the file again.')
         st.stop()
 
     prune_suppressed_notes(st.session_state, reports)
@@ -350,8 +375,8 @@ def main():
             st.write('No causal inference is performed.')
             st.caption('Mappings are provisional and need evidence review. No benchmark percentile is inferred. No LLM or RAG is used.')
         with st.expander('Data Disclosure'):
-            st.info(SYNTHETIC_LABEL)
-            st.caption('The bundled dataset contains fictional teams and invented scores for demonstration only.')
+            st.info(dataset_label)
+            st.caption('User-supplied aggregate results; source and provenance are not verified.' if uploaded else 'The bundled dataset contains fictional teams and invented scores for demonstration only.')
         with st.expander('Limitations'):
             st.write('Results are relative to each team and period. Small groups may create privacy risks; the configured minimum-response rule suppresses the entire team/period when any supplied item fails.')
             st.caption('See Methodology & Limitations below for the full cautions.')
@@ -369,7 +394,8 @@ def main():
         ('GrandMean', f'{report.grand_mean:.2f} / 5', 'Available item means', ''),
         ('Strongest Hierarchy Area', ', '.join(report.hierarchy_strengths), 'Relative stronger signal', 'green'),
         ('Primary Area to Explore', ', '.join(report.hierarchy_opportunities), 'Area for investigation', 'gold'),
-        ('Team', report.team_id.removeprefix('SYNTHETIC_'), 'Synthetic demonstration team', 'teal'),
+        ('Team', report.team_id if uploaded else report.team_id.removeprefix('SYNTHETIC_'),
+         'Uploaded dataset' if uploaded else 'Synthetic demonstration team', 'teal'),
     ]
     _card_grid([
         f'<article class="aa-card {tone}"><div class="aa-label">{escape(label)}</div>'
@@ -397,7 +423,7 @@ def main():
             f'<p><span class="aa-badge {tone}">{label}</span></p></article>'
         )
     _card_grid(hierarchy_cards, four=True)
-    st.caption('Scores are aggregated team-level means from synthetic demonstration data.')
+    st.caption('Scores are aggregated team-level means from the uploaded dataset.' if uploaded else 'Scores are aggregated team-level means from synthetic demonstration data.')
     st.caption('Bars show the full valid 1–5 scale, starting at 1. Missing areas are unavailable and are not imputed. Tied areas are labeled explicitly.')
 
     if item_tie_notice(report):
@@ -489,10 +515,10 @@ def main():
             st.write('**Missing items:** ' + ', '.join(report.missing_items))
 
     st.download_button(
-        'Download Diagnostic Summary', data=diagnostic_summary_text(report),
+        'Download Diagnostic Summary', data=diagnostic_summary_text(report, dataset_label),
         file_name='commsalign-diagnostic-summary.txt', mime='text/plain; charset=utf-8', type='primary',
     )
-    render_workflow(report, matrix)
+    render_workflow(report, matrix, dataset_label=dataset_label)
     st.markdown('<footer class="aa-footer">CommsAlign prototype. Inspired by contemporary employee-engagement reporting practices. Not affiliated with or endorsed by Gallup.</footer>', unsafe_allow_html=True)
 
 
